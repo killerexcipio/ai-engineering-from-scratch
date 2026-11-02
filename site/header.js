@@ -8,10 +8,11 @@
   var REPO = 'rohitg00/ai-engineering-from-scratch';
   var CACHE_KEY = 'gh:stars:' + REPO;
   var CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-  var COMPACT_HEADER_QUERY = '(max-width: 1400px)';
   var NARROW_HEADER_QUERY = '(max-width: 820px)';
   var NARRATION_VERSION = '20260829a';
-  var UI_I18N_VERSION = '20260923a';
+  var UI_I18N_VERSION = '20261010a';
+  var STAR_NUDGE_VERSION = '20261013a';
+  var THEME_MENU_VERSION = '20261029a';
   var navId = 0;
 
   function isStaticPreview(locationValue) {
@@ -25,7 +26,7 @@
   }
 
   function adaptRouteHref(href, locationValue) {
-    if (typeof href !== 'string' || !isStaticPreview(locationValue)) return href;
+    if (typeof href !== 'string') return href;
     if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.indexOf('//') === 0) {
       try {
         var resolved = new URL(href, (locationValue || window.location).href);
@@ -34,7 +35,16 @@
         return href;
       }
     }
-    return href.replace(/(^|\/)(lesson|certification)(?=[?#]|$)/, '$1$2.html');
+    var boundary = href.search(/[?#]/);
+    var pathname = boundary < 0 ? href : href.slice(0, boundary);
+    var suffix = boundary < 0 ? '' : href.slice(boundary);
+    var pages = '(index|about|catalog|glossary|roadmap|developer|contact|privacy|sponsors|projects|project|learning-paths|certifications|certification|assessment|lesson|blogs|manuals|manual-[a-z0-9-]+|inside-an-ai-agent|inside-a-decompiler|inside-an-llm-serving-gpu|skills|how-to-learn|highlights)';
+    if (isStaticPreview(locationValue)) {
+      return pathname.replace(new RegExp('(^|/)' + pages + '$'), '$1$2.html') + suffix;
+    }
+    return pathname.replace(new RegExp('(^|/)' + pages + '\\.html$'), function (_, prefix, page) {
+      return page === 'index' ? (prefix || './') : prefix + page;
+    }) + suffix;
   }
 
   function adaptRouteLink(link) {
@@ -59,8 +69,6 @@
       adaptLink: adaptRouteLink,
       adaptTree: adaptRouteTree
     };
-    if (!isStaticPreview()) return;
-
     adaptRouteTree(document);
     document.addEventListener('click', function (event) {
       var target = event.target;
@@ -171,6 +179,24 @@
     document.head.appendChild(script);
   }
 
+  function ensureStarNudge() {
+    if (window.AIFSStarNudge || document.querySelector('script[data-aifs-star-nudge]')) return;
+    var script = document.createElement('script');
+    script.src = 'star-nudge.js?v=' + STAR_NUDGE_VERSION;
+    script.async = true;
+    script.setAttribute('data-aifs-star-nudge', STAR_NUDGE_VERSION);
+    document.head.appendChild(script);
+  }
+
+  function ensureThemeMenu() {
+    if (window.AIFSThemeMenu || document.querySelector('script[data-aifs-theme-menu]')) return;
+    var script = document.createElement('script');
+    script.src = 'theme-menu.js?v=' + THEME_MENU_VERSION;
+    script.async = true;
+    script.setAttribute('data-aifs-theme-menu', THEME_MENU_VERSION);
+    document.head.appendChild(script);
+  }
+
   function ensureNewsletter() {
     if (document.querySelector('script[data-aifs-newsletter]')) return;
     var stylesheet = document.createElement('link');
@@ -178,7 +204,7 @@
     stylesheet.href = 'newsletter.css?v=20260926b';
     document.head.appendChild(stylesheet);
     var script = document.createElement('script');
-    script.src = 'newsletter.js?v=20260926b';
+    script.src = 'newsletter.js?v=20261015a';
     script.async = true;
     script.setAttribute('data-aifs-newsletter', 'true');
     document.head.appendChild(script);
@@ -212,8 +238,12 @@
     }
 
     var target = current;
-    if (current === 'certification.html' || current === 'assessment.html') {
+    if (current === 'project.html') {
+      target = 'projects.html';
+    } else if (current === 'certification.html' || current === 'assessment.html') {
       target = 'certifications.html';
+    } else if (/^manual-[a-z0-9-]+\.html$/.test(current)) {
+      target = 'manuals.html';
     } else if (current === 'lesson.html') {
       try {
         var params = new URLSearchParams(location.search);
@@ -234,8 +264,9 @@
 
   function ensureNavigationLink(nav, filename, label, className) {
     var links = nav.querySelectorAll('a');
+    var target = pageFile(filename);
     for (var i = 0; i < links.length; i++) {
-      if (pageFile(links[i].href) === filename) return;
+      if (pageFile(links[i].href) === target) return;
     }
 
     var link = document.createElement('a');
@@ -248,6 +279,14 @@
 
   function addNavigationLinks(nav) {
     ensureNavigationLink(nav, 'learning-paths.html', 'Learning Paths', '');
+    ensureNavigationLink(nav, 'how-to-learn.html', 'How to Learn', '');
+    ensureNavigationLink(nav, 'projects.html', 'Projects', '');
+    ensureNavigationLink(nav, 'manuals.html', 'Manuals', '');
+    ensureNavigationLink(nav, '/cheatsheets', 'Cheat Sheets', '');
+    ensureNavigationLink(nav, '/practice', 'Practice', '');
+    ensureNavigationLink(nav, 'skills.html', 'Skills', '');
+    ensureNavigationLink(nav, 'highlights.html', 'My Highlights', '');
+    ensureNavigationLink(nav, '/blogs', 'Blogs & Guides', '');
     ensureNavigationLink(nav, 'certifications.html', 'Certifications', 'header-mobile-only');
     ensureNavigationLink(nav, 'sponsors.html', 'Sponsor us', 'header-mobile-only');
   }
@@ -305,17 +344,10 @@
     tools.setAttribute('aria-label', 'Site tools');
     nav.appendChild(tools);
 
-    var toolAnchor = document.createComment('header-tools');
     var directChildren = Array.prototype.slice.call(inner.children);
     var search = directChildren.find(function (child) {
       return child.classList && child.classList.contains('search-toggle');
     });
-    var firstTool = directChildren.find(function (child) {
-      return child !== logo && child !== nav && child !== toggle && child !== priorityNav && child !== github && child !== search;
-    });
-    inner.insertBefore(toolAnchor, search ? search.nextSibling : (firstTool || null));
-
-    var compact = window.matchMedia ? window.matchMedia(COMPACT_HEADER_QUERY) : null;
     var narrow = window.matchMedia ? window.matchMedia(NARROW_HEADER_QUERY) : null;
     var open = false;
 
@@ -339,10 +371,6 @@
       });
     }
 
-    function restoreDesktopTools() {
-      while (tools.firstChild) inner.insertBefore(tools.firstChild, toolAnchor);
-    }
-
     function movePriorityLinksOut() {
       for (var i = 0; i < priorityEntries.length; i++) {
         priorityNav.appendChild(priorityEntries[i].link);
@@ -363,27 +391,18 @@
       header.classList.toggle('header-nav-open', open);
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
-      if (compact && compact.matches) nav.hidden = !open;
-      else nav.hidden = false;
+      nav.hidden = !open;
       if (restoreFocus && !open) toggle.focus();
     }
 
     function syncLayout() {
-      var isCompact = compact ? compact.matches : false;
       var isNarrow = narrow ? narrow.matches : false;
       var menuHadFocus = nav.contains(document.activeElement);
       var priorityHadFocus = priorityNav.contains(document.activeElement);
-      if (isCompact) {
-        if (isNarrow) restorePriorityLinks();
-        else movePriorityLinksOut();
-        moveToolsIntoMenu();
-        setOpen(false, menuHadFocus || (isNarrow && priorityHadFocus));
-      } else {
-        restorePriorityLinks();
-        setOpen(false, false);
-        restoreDesktopTools();
-        nav.hidden = false;
-      }
+      if (isNarrow) restorePriorityLinks();
+      else movePriorityLinksOut();
+      moveToolsIntoMenu();
+      setOpen(false, menuHadFocus || (isNarrow && priorityHadFocus));
     }
 
     toggle.addEventListener('click', function () { setOpen(!open, false); });
@@ -407,10 +426,6 @@
       }
     });
 
-    if (compact) {
-      if (typeof compact.addEventListener === 'function') compact.addEventListener('change', syncLayout);
-      else if (typeof compact.addListener === 'function') compact.addListener(syncLayout);
-    }
     if (narrow) {
       if (typeof narrow.addEventListener === 'function') narrow.addEventListener('change', syncLayout);
       else if (typeof narrow.addListener === 'function') narrow.addListener(syncLayout);
@@ -418,7 +433,6 @@
 
     if (typeof MutationObserver === 'function') {
       var observer = new MutationObserver(function (mutations) {
-        if (!compact || !compact.matches) return;
         for (var i = 0; i < mutations.length; i++) {
           var added = mutations[i].addedNodes;
           for (var j = 0; j < added.length; j++) {
@@ -431,13 +445,106 @@
     syncLayout();
   }
 
+  var BANNER_KEY = 'aifs:banner:dismissed';
+  var BANNER_ID = 'manuals-20261023';
+  var BANNER_HTML = '<div class="site-banner-inner">'
+    + '<span class="site-banner-tag">New</span>'
+    + '<p class="site-banner-text">'
+    + '<span class="site-banner-long">Detailed manuals for vLLM, Miles, SGLang, A2A, Docker Sandboxes and Reverse Engineering. </span>'
+    + '<span class="site-banner-short">Detailed manuals. </span>'
+    + '<a class="site-banner-link" href="manuals.html">Read the manuals<span aria-hidden="true"> →</span></a>'
+    + '</p>'
+    + '<button type="button" class="site-banner-close" aria-label="Dismiss the manuals announcement">'
+    + '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">'
+    + '<path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" fill="none"/></svg>'
+    + '</button></div>';
+
+  function bannerDismissed() {
+    try {
+      return localStorage.getItem(BANNER_KEY) === BANNER_ID;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function rememberBannerDismissed() {
+    try {
+      localStorage.setItem(BANNER_KEY, BANNER_ID);
+    } catch (_) {}
+  }
+
+  function setupBanner() {
+    var header = document.querySelector('.site-header');
+    if (!header || !header.parentNode || document.documentElement.hasAttribute('data-poster') || document.querySelector('.site-banner') || bannerDismissed()) return;
+
+    var root = document.documentElement;
+    var banner = document.createElement('aside');
+    banner.className = 'site-banner';
+    banner.setAttribute('aria-label', 'Announcement');
+    banner.innerHTML = BANNER_HTML;
+    adaptRouteTree(banner);
+    header.parentNode.insertBefore(banner, header);
+    root.classList.add('has-site-banner');
+
+    var height = 0;
+    var frame = 0;
+
+    function syncOffset() {
+      frame = 0;
+      var offset = Math.max(0, height - (window.pageYOffset || root.scrollTop || 0));
+      root.style.setProperty('--site-banner-offset', offset + 'px');
+    }
+
+    function requestSync() {
+      if (!frame) frame = window.requestAnimationFrame(syncOffset);
+    }
+
+    function measure() {
+      height = banner.offsetHeight;
+      root.style.setProperty('--site-banner-h', height + 'px');
+      syncOffset();
+    }
+
+    var resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    if (resizeObserver) resizeObserver.observe(banner);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', requestSync, { passive: true });
+    measure();
+
+    banner.querySelector('.site-banner-close').addEventListener('click', function () {
+      rememberBannerDismissed();
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', requestSync);
+      if (frame) window.cancelAnimationFrame(frame);
+      var scrollY = window.pageYOffset || root.scrollTop || 0;
+      banner.parentNode.removeChild(banner);
+      root.classList.remove('has-site-banner');
+      root.style.removeProperty('--site-banner-h');
+      root.style.removeProperty('--site-banner-offset');
+      if (scrollY > 0) window.scrollTo({ top: Math.max(0, scrollY - height), behavior: 'instant' });
+      var logo = header.querySelector('.logo');
+      if (logo) logo.focus();
+    });
+  }
+
   function load() {
+    setupBanner();
     var headers = document.querySelectorAll('.site-header');
     for (var i = 0; i < headers.length; i++) setupNavigation(headers[i]);
+    var footers = document.querySelectorAll('.footer-links');
+    for (var j = 0; j < footers.length; j++) {
+      ensureNavigationLink(footers[j], '/blogs', 'Blogs & Guides', '');
+      ensureNavigationLink(footers[j], 'skills.html', 'Skills', '');
+      ensureNavigationLink(footers[j], '/practice', 'Practice', '');
+      ensureNavigationLink(footers[j], 'highlights.html', 'My Highlights', '');
+    }
     loadStars();
+    ensureThemeMenu();
     ensureNarration();
     ensureUiI18n();
     ensureNewsletter();
+    ensureStarNudge();
   }
 
   setupRouteLinks();
